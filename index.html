@@ -1,0 +1,608 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Genjutsu | First-Person Experience</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #080307; }
+    canvas { display: block; }
+    #instructions {
+      position: fixed; z-index: 1; inset: 0; display: grid; place-items: start center;
+      padding: 28px 20px; color: #fff; font: 15px/1.5 system-ui, sans-serif;
+      letter-spacing: .04em; text-align: center; text-shadow: 0 2px 12px #000;
+      background: linear-gradient(#080307b8, transparent 150px); cursor: pointer;
+    }
+    #instructions.hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div id="instructions">Click to enter the Genjutsu. Use WASD to move and Space to jump.</div>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0b1c2b);
+    scene.fog = new THREE.FogExp2(0x132b38, 0.0045);
+
+    const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.1, 1000);
+    const groundLevel = 1.8;
+    camera.position.set(0, groundLevel, 18);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new PointerLockControls(camera, renderer.domElement);
+    const overlay = document.querySelector('#instructions');
+    const listener = new THREE.AudioListener();
+    camera.add(listener);
+    const music = new THREE.PositionalAudio(listener);
+    music.position.set(18, 30, -32);
+    music.setLoop(true);
+    music.setVolume(0.5);
+    music.setRefDistance(5);
+    music.setRolloffFactor(1.2);
+    music.setDistanceModel('inverse');
+    scene.add(music);
+
+    let musicReady = false;
+    let musicRequested = false;
+    music.onEnded = function () {
+      THREE.Audio.prototype.onEnded.call(this);
+      if (musicRequested && listener.context.state === 'running') {
+        this.setLoop(true);
+        this.play();
+      }
+    };
+
+    function startMusic() {
+      musicRequested = true;
+      listener.context.resume().then(() => {
+        if (musicReady && !music.isPlaying) {
+          music.setLoop(true);
+          music.play();
+        }
+      }).catch((error) => console.error('Could not start music.mp3', error));
+    }
+
+    new THREE.AudioLoader().load('./music.mp3', (buffer) => {
+      music.setBuffer(buffer);
+      music.setLoop(true);
+      musicReady = true;
+      if (musicRequested) startMusic();
+    }, undefined, (error) => {
+      console.error('Could not load music.mp3', error);
+      overlay.textContent = 'Could not load music.mp3. Keep it beside index.html and reload.';
+    });
+
+    overlay.addEventListener('click', () => {
+      startMusic();
+      overlay.classList.add('hidden');
+      controls.lock();
+    });
+    controls.addEventListener('lock', () => overlay.classList.add('hidden'));
+    controls.addEventListener('unlock', () => overlay.classList.remove('hidden'));
+
+    // Warm night lighting and soft directional shadows preserve the original mood.
+    scene.add(new THREE.HemisphereLight(0x55435b, 0x181018, 1.05));
+    const warmLight = new THREE.DirectionalLight(0xffc98e, 2.0);
+    warmLight.position.set(-42, 68, 34);
+    warmLight.castShadow = true;
+    warmLight.shadow.mapSize.set(1024, 1024);
+    warmLight.shadow.camera.left = -145;
+    warmLight.shadow.camera.right = 145;
+    warmLight.shadow.camera.top = 145;
+    warmLight.shadow.camera.bottom = -145;
+    scene.add(warmLight);
+    const redLight = new THREE.PointLight(0xff1638, 46, 34, 2);
+    redLight.position.set(0, 4.5, -23);
+    scene.add(redLight);
+    const villageLight = new THREE.PointLight(0x54baff, 340, 140, 2);
+    villageLight.position.set(0, 30, -25);
+    scene.add(villageLight);
+
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(360, 360),
+      new THREE.MeshStandardMaterial({ color: 0x28252c, roughness: 1 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.set(0, -0.18, -20);
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // A lantern-lit avenue leads through the village to the portrait plaza.
+    const roadMaterial = new THREE.MeshStandardMaterial({ color: 0x383139, roughness: 0.95 });
+    function road(w, d, x, z, y = -0.08, material = roadMaterial) {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, 0.12, d), material);
+      mesh.position.set(x, y, z);
+      mesh.receiveShadow = true;
+      scene.add(mesh);
+      return mesh;
+    }
+    road(7, 82, 0, -20);
+    for (const z of [-5, -15, -39, -50]) road(78, 3.2, 0, z);
+    road(11, 6, 0, -24.5, 0.04, new THREE.MeshStandardMaterial({ color: 0x51424a, roughness: 0.8 }));
+
+    // Mountain silhouettes close the valley in the distance without enclosing the player.
+    const rockMats = [0x312c38, 0x3c3340, 0x282833].map((color) =>
+      new THREE.MeshStandardMaterial({ color, roughness: 1, flatShading: true, side: THREE.DoubleSide })
+    );
+    function mountain(x, z, radius, height, material = rockMats[0], sides = 7) {
+      const rings = [[], [], []];
+      for (let i = 0; i < sides; i++) {
+        const angle = i / sides * Math.PI * 2;
+        const baseRadius = radius * (0.9 + Math.random() * 0.18);
+        const middleRadius = radius * (0.56 + Math.random() * 0.2);
+        const upperRadius = radius * (0.2 + Math.random() * 0.2);
+        rings[0].push([Math.cos(angle) * baseRadius, -height / 2, Math.sin(angle) * baseRadius]);
+        rings[1].push([
+          Math.cos(angle + 0.05) * middleRadius,
+          height * (0.33 + Math.random() * 0.12) - height / 2,
+          Math.sin(angle + 0.05) * middleRadius
+        ]);
+        rings[2].push([
+          Math.cos(angle - 0.06) * upperRadius,
+          height * (0.65 + Math.random() * 0.12) - height / 2,
+          Math.sin(angle - 0.06) * upperRadius
+        ]);
+      }
+      const tip = [(Math.random() - 0.5) * radius * 0.2, height / 2, (Math.random() - 0.5) * radius * 0.2];
+      const vertices = [];
+      const addTriangle = (a, b, c) => vertices.push(...a, ...b, ...c);
+      for (let i = 0; i < sides; i++) {
+        const next = (i + 1) % sides;
+        for (let ring = 0; ring < 2; ring++) {
+          addTriangle(rings[ring][i], rings[ring + 1][i], rings[ring][next]);
+          addTriangle(rings[ring][next], rings[ring + 1][i], rings[ring + 1][next]);
+        }
+        addTriangle(rings[2][i], tip, rings[2][next]);
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+      geometry.computeVertexNormals();
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(x, height / 2 - 0.15, z);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      scene.add(mesh);
+      return mesh;
+    }
+    for (let i = 0; i < 11; i++) {
+      const x = -60 + i * 12;
+      mountain(x, -85 - (i % 3) * 3, 13 + (i % 3) * 2, 29 + (i % 4) * 4, rockMats[i % rockMats.length]);
+    }
+    for (let i = 0; i < 4; i++) {
+      const z = -54 + i * 18;
+      mountain(-64, z, 13, 27 + (i % 2) * 5, rockMats[(i + 1) % 3]);
+      mountain(64, z - 7, 13, 25 + (i % 2) * 5, rockMats[(i + 2) % 3]);
+    }
+    // A single monumental peak gives the village an original, recognizable skyline.
+    mountain(0, -88, 23, 48, rockMats[1], 9);
+    mountain(-25, -81, 16, 31, rockMats[0], 7);
+    mountain(26, -82, 17, 34, rockMats[2], 7);
+
+    const wallMats = [0x53454a, 0x4a464d, 0x61514d, 0x49424a].map((color) =>
+      new THREE.MeshStandardMaterial({ color, roughness: 0.88 })
+    );
+    const roofMats = [0x252731, 0x30303a, 0x3c2b32].map((color) =>
+      new THREE.MeshStandardMaterial({ color, roughness: 0.76, metalness: 0.12 })
+    );
+    const timberMat = new THREE.MeshStandardMaterial({ color: 0x30201f, roughness: 0.9 });
+    const windowMat = new THREE.MeshStandardMaterial({
+      color: 0xffd18c, emissive: 0xff8a35, emissiveIntensity: 4.2, roughness: 0.5
+    });
+
+    const buildingColliders = [];
+    let villageCollisionRoot = null;
+    const villageCollisionMaterial = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+    const collisionRaycaster = new THREE.Raycaster();
+    collisionRaycaster.layers.set(1);
+    let characterMixer = null;
+    function addHouse(x, z, width, depth, height, style) {
+      const group = new THREE.Group();
+      group.position.set(x, 0, z);
+      buildingColliders.push({
+        minX: x - width / 2 - 0.8,
+        maxX: x + width / 2 + 0.8,
+        minZ: z - depth / 2 - 0.8,
+        maxZ: z + depth / 2 + 0.8
+      });
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(width, height, depth),
+        wallMats[style % wallMats.length]
+      );
+      body.position.y = height / 2;
+      body.castShadow = true;
+      body.receiveShadow = true;
+      group.add(body);
+
+      const overhang = 0.65;
+      const ridgeY = height + 1.1 + (style % 2) * 0.35;
+      const eaveY = height + 0.35;
+      const halfW = width / 2 + overhang;
+      const halfD = depth / 2 + overhang;
+      const vertices = new Float32Array([
+        -halfW,eaveY,-halfD, 0,ridgeY,-halfD, 0,ridgeY,halfD,
+        -halfW,eaveY,-halfD, 0,ridgeY,halfD, -halfW,eaveY,halfD,
+        0,ridgeY,-halfD, halfW,eaveY,-halfD, halfW,eaveY,halfD,
+        0,ridgeY,-halfD, halfW,eaveY,halfD, 0,ridgeY,halfD
+      ]);
+      const roofGeo = new THREE.BufferGeometry();
+      roofGeo.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+      roofGeo.computeVertexNormals();
+      const roof = new THREE.Mesh(roofGeo, roofMats[style % roofMats.length]);
+      roof.material.side = THREE.DoubleSide;
+      roof.castShadow = true;
+      group.add(roof);
+
+      const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, depth + 1.5), timberMat);
+      ridge.position.y = ridgeY + 0.04;
+      group.add(ridge);
+      const eave = new THREE.Mesh(new THREE.BoxGeometry(width + 1.5, 0.22, depth + 1.3), timberMat);
+      eave.position.y = eaveY;
+      group.add(eave);
+
+      for (const side of [-1, 1]) {
+        const window = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.85, 0.72), windowMat);
+        window.position.set(side * (width / 2 + 0.07), height * 0.57, depth * 0.05);
+        group.add(window);
+      }
+      const door = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.7, 0.12), timberMat);
+      door.position.set(0, 0.84, depth / 2 + 0.08);
+      group.add(door);
+      if (style % 3 === 0) {
+        const upper = new THREE.Mesh(new THREE.BoxGeometry(width * 0.72, 1.5, depth * 0.7), wallMats[(style + 1) % 4]);
+        upper.position.set(0, height + 0.7, -depth * 0.04);
+        upper.castShadow = true;
+        group.add(upper);
+      }
+      group.traverse((part) => { if (part.isMesh && part !== body) part.castShadow = true; });
+      scene.add(group);
+    }
+
+    // Varied houses in staggered rows leave the central roads open for exploration.
+    let houseSeed = 17;
+    function randomHouse() {
+      houseSeed = (houseSeed * 16807) % 2147483647;
+      return houseSeed / 2147483647;
+    }
+    let styleIndex = 0;
+    for (const z of [-3, -10, -43, -51]) {
+      for (const side of [-1, 1]) {
+        for (const x of [11, 18, 26, 34, 42]) {
+          const w = 4.2 + randomHouse() * 2.2;
+          const d = 4.2 + randomHouse() * 2.4;
+          const h = 3.4 + randomHouse() * 2.4;
+          addHouse(side * x, z + (randomHouse() - 0.5) * 2, w, d, h, styleIndex++);
+        }
+      }
+    }
+
+    // A shallow stream and arched timber bridge cross the lower avenue.
+    const water = new THREE.Mesh(
+      new THREE.BoxGeometry(112, 0.12, 4.6),
+      new THREE.MeshStandardMaterial({ color: 0x252e3d, emissive: 0x101a2b, roughness: 0.34, metalness: 0.45 })
+    );
+    water.position.set(0, -0.24, -34);
+    scene.add(water);
+    const bridgeMat = new THREE.MeshStandardMaterial({ color: 0x493733, roughness: 0.82 });
+    const bridge = new THREE.Mesh(new THREE.BoxGeometry(10, 0.48, 7), bridgeMat);
+    bridge.position.set(0, 0.38, -34);
+    bridge.castShadow = true;
+    bridge.receiveShadow = true;
+    scene.add(bridge);
+    for (const x of [-4.7, 4.7]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.95, 7), timberMat);
+      rail.position.set(x, 1.03, -34);
+      rail.castShadow = true;
+      scene.add(rail);
+      for (const z of [-36.5, -34, -31.5]) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.32, 1.25, 0.32), timberMat);
+        post.position.set(x, 1.08, z);
+        scene.add(post);
+      }
+    }
+
+    // Batch the valley's layered pine trees into a few instanced draw calls.
+    const treePositions = [];
+    for (let i = 0; i < 28; i++) {
+      const z = 12 - i * 2.4;
+      treePositions.push([-43 - randomHouse() * 7, z], [43 + randomHouse() * 7, z - 1]);
+    }
+    const trunkGeo = new THREE.CylinderGeometry(0.16, 0.28, 2.3, 5);
+    const leafGeo = new THREE.ConeGeometry(1.35, 3.8, 6);
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x3a2927, roughness: 1 });
+    const leafMat = new THREE.MeshStandardMaterial({ color: 0x263735, roughness: 1, flatShading: true });
+    const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, treePositions.length);
+    const foliage = new THREE.InstancedMesh(leafGeo, leafMat, treePositions.length * 2);
+    const dummy = new THREE.Object3D();
+    treePositions.forEach(([x, z], i) => {
+      const scale = 0.8 + randomHouse() * 0.8;
+      dummy.position.set(x, 1.1 * scale, z);
+      dummy.scale.setScalar(scale);
+      dummy.rotation.y = randomHouse() * Math.PI;
+      dummy.updateMatrix();
+      trunks.setMatrixAt(i, dummy.matrix);
+      for (let layer = 0; layer < 2; layer++) {
+        dummy.position.set(x, (3.0 + layer * 1.9) * scale, z);
+        dummy.scale.setScalar(scale * (layer === 0 ? 1 : 0.72));
+        dummy.updateMatrix();
+        foliage.setMatrixAt(i * 2 + layer, dummy.matrix);
+      }
+    });
+    trunks.castShadow = true;
+    foliage.castShadow = true;
+    scene.add(trunks, foliage);
+
+    // Warm street lanterns add readable depth cues between the buildings.
+    const lanternGeo = new THREE.BoxGeometry(0.55, 0.7, 0.55);
+    const lanternMat = new THREE.MeshStandardMaterial({ color: 0xffbd70, emissive: 0xff7528, emissiveIntensity: 2.4 });
+    for (const z of [-2, -12, -22, -42, -51]) {
+      for (const x of [-8, 8]) {
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.14, 3.6, 6), timberMat);
+        post.position.set(x, 1.8, z);
+        post.castShadow = true;
+        scene.add(post);
+        const lamp = new THREE.Mesh(lanternGeo, lanternMat);
+        lamp.position.set(x, 3.7, z);
+        scene.add(lamp);
+        const glow = new THREE.PointLight(0xff9a4f, 4, 10, 2);
+        glow.position.set(x, 3.8, z);
+        scene.add(glow);
+      }
+    }
+
+    const imageMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffffff, transparent: true, side: THREE.DoubleSide,
+      depthWrite: false, toneMapped: false
+    });
+    const portrait = new THREE.Mesh(new THREE.PlaneGeometry(15, 15.5), imageMaterial);
+    portrait.position.set(18, 30, -32);
+    portrait.visible = false;
+    imageMaterial.color.set(0x9bdcff);
+    imageMaterial.opacity = 0.72;
+    imageMaterial.blending = THREE.AdditiveBlending;
+    scene.add(portrait);
+
+    // Convert the supplied JPEG's light checkerboard to transparency for a clean billboard.
+    new THREE.TextureLoader().load('./itachi.png', (source) => {
+      const image = source.image;
+      const canvas = document.createElement('canvas');
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      context.drawImage(image, 0, 0);
+      const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+      for (let i = 0; i < pixels.data.length; i += 4) {
+        const r = pixels.data[i], g = pixels.data[i + 1], b = pixels.data[i + 2];
+        if (Math.max(r, g, b) - Math.min(r, g, b) < 24 && (r + g + b) / 3 > 182) {
+          pixels.data[i + 3] = 0;
+        }
+      }
+      context.putImageData(pixels, 0, 0);
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      imageMaterial.map = texture;
+      imageMaterial.needsUpdate = true;
+      source.dispose();
+    }, undefined, (error) => {
+      console.error('Could not load itachi.png', error);
+      overlay.textContent = 'Could not load itachi.png. Keep it beside index.html and reload.';
+    });
+
+    // Scale the model into a large walkable landmark centered around the starting area.
+    new GLTFLoader().load('./village.glb', (gltf) => {
+      const village = gltf.scene;
+      const bounds = new THREE.Box3().setFromObject(village);
+      const size = bounds.getSize(new THREE.Vector3());
+      const center = bounds.getCenter(new THREE.Vector3());
+      const horizontalSize = Math.max(size.x, size.z);
+      if (!Number.isFinite(horizontalSize) || horizontalSize <= 0) {
+        console.error('village.glb has no measurable 3D geometry');
+        return;
+      }
+
+      const scale = 72;
+      village.scale.setScalar(scale);
+      village.position.set(
+        -center.x * scale,
+        0,
+        -25 - center.z * scale
+      );
+      village.updateMatrixWorld(true);
+      const groundProbe = new THREE.Raycaster(
+        new THREE.Vector3(camera.position.x, size.y * scale + 20, camera.position.z),
+        new THREE.Vector3(0, -1, 0)
+      );
+      const groundHit = groundProbe.intersectObject(village, true)[0];
+      if (groundHit) {
+        village.position.y = -0.18 - groundHit.point.y;
+      } else {
+        village.position.y = -bounds.min.y * scale - 0.18;
+        console.warn('Could not find village ground beneath the starting position; using model bounds.');
+      }
+      village.updateMatrixWorld(true);
+      village.traverse((object) => {
+        if (object.isMesh) {
+          object.castShadow = true;
+          object.receiveShadow = true;
+        }
+      });
+      scene.add(village);
+      villageCollisionRoot = village.clone(true);
+      villageCollisionRoot.traverse((object) => {
+        if (object.isMesh) {
+          object.material = villageCollisionMaterial;
+          object.layers.set(1);
+        }
+      });
+      scene.add(villageCollisionRoot);
+      villageLight.position.set(0, Math.max(6, size.y * scale * 0.55), -25);
+
+      new GLTFLoader().load('./itachi_fight.glb', (characterGltf) => {
+        const character = characterGltf.scene;
+        const characterBounds = new THREE.Box3().setFromObject(character);
+        const characterSize = characterBounds.getSize(new THREE.Vector3());
+        if (!Number.isFinite(characterSize.y) || characterSize.y <= 0) {
+          console.error('itachi_fight.glb has no measurable 3D geometry');
+          return;
+        }
+
+        const characterScale = 5 / characterSize.y;
+        const characterX = 0;
+        const characterZ = 5;
+        character.scale.setScalar(characterScale);
+        character.position.set(characterX, 0, characterZ);
+        character.updateMatrixWorld(true);
+
+        const characterGroundRay = new THREE.Raycaster(
+          new THREE.Vector3(characterX, size.y * scale + 20, characterZ),
+          new THREE.Vector3(0, -1, 0)
+        );
+        const characterGround = characterGroundRay.intersectObject(village, true)[0];
+        const scaledCharacterBounds = new THREE.Box3().setFromObject(character);
+        character.position.y = characterGround
+          ? characterGround.point.y - scaledCharacterBounds.min.y
+          : -bounds.min.y * scale - 0.18 - scaledCharacterBounds.min.y;
+
+        character.traverse((object) => {
+          if (object.isMesh) {
+            object.castShadow = true;
+            object.receiveShadow = true;
+          }
+        });
+        scene.add(character);
+
+        if (characterGltf.animations.length > 0) {
+          characterMixer = new THREE.AnimationMixer(character);
+          characterMixer.clipAction(characterGltf.animations[0])
+            .setLoop(THREE.LoopRepeat, Infinity)
+            .play();
+        } else {
+          console.info('itachi_fight.glb contains no animation clips; character loaded in a static pose.');
+        }
+      }, undefined, (error) => {
+        console.error('Could not load itachi_fight.glb', error);
+      });
+    }, undefined, (error) => {
+      console.error('Could not load village.glb', error);
+      overlay.textContent = 'Could not load village.glb. Keep it beside index.html and reload.';
+    });
+
+    // Single GPU point system with wrapped, upward-drifting embers.
+    const emberCount = 900;
+    const emberPositions = new Float32Array(emberCount * 3);
+    const emberSpeeds = new Float32Array(emberCount);
+    for (let i = 0; i < emberCount; i++) {
+      emberPositions[i * 3] = (Math.random() - 0.5) * 90;
+      emberPositions[i * 3 + 1] = Math.random() * 22;
+      emberPositions[i * 3 + 2] = -55 + Math.random() * 75;
+      emberSpeeds[i] = 0.3 + Math.random() * 1.1;
+    }
+    const emberGeometry = new THREE.BufferGeometry();
+    emberGeometry.setAttribute('position', new THREE.BufferAttribute(emberPositions, 3));
+    const embers = new THREE.Points(emberGeometry, new THREE.PointsMaterial({
+      color: 0xff3a32, size: 0.11, transparent: true, opacity: 0.82,
+      blending: THREE.AdditiveBlending, depthWrite: false
+    }));
+    scene.add(embers);
+
+    const keys = new Set();
+    const gravity = 22;
+    const jumpSpeed = 8.5;
+    const playerRadius = 0.45;
+    let verticalVelocity = 0;
+    const movementDirection = new THREE.Vector3();
+    const moveForwardVector = new THREE.Vector3();
+    const moveRightVector = new THREE.Vector3();
+
+    function canMoveTo(x, z, deltaX, deltaZ) {
+      if (buildingColliders.some((box) =>
+        x + playerRadius > box.minX && x - playerRadius < box.maxX &&
+        z + playerRadius > box.minZ && z - playerRadius < box.maxZ
+      )) return false;
+
+      const distance = Math.hypot(deltaX, deltaZ);
+      if (!villageCollisionRoot || distance === 0) return true;
+
+      movementDirection.set(deltaX / distance, 0, deltaZ / distance);
+      collisionRaycaster.set(
+        new THREE.Vector3(x - deltaX, camera.position.y - 0.75, z - deltaZ),
+        movementDirection
+      );
+      collisionRaycaster.near = 0;
+      collisionRaycaster.far = distance + playerRadius;
+      return collisionRaycaster.intersectObject(villageCollisionRoot, true).length === 0;
+    }
+
+    addEventListener('keydown', (event) => {
+      if (['KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(event.code)) {
+        keys.add(event.code);
+        event.preventDefault();
+      }
+      if (event.code === 'Space') {
+        event.preventDefault();
+        if (!event.repeat && controls.isLocked && camera.position.y <= groundLevel + 0.001) {
+          verticalVelocity = jumpSpeed;
+        }
+      }
+    });
+    addEventListener('keyup', (event) => keys.delete(event.code));
+    addEventListener('blur', () => keys.clear());
+    addEventListener('resize', () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+
+    const clock = new THREE.Clock();
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = Math.min(clock.getDelta(), 0.05);
+      if (characterMixer) characterMixer.update(delta);
+      if (controls.isLocked) {
+        const forward = Number(keys.has('KeyW')) - Number(keys.has('KeyS'));
+        const strafe = Number(keys.has('KeyD')) - Number(keys.has('KeyA'));
+        const magnitude = Math.hypot(forward, strafe) || 1;
+        camera.getWorldDirection(moveForwardVector);
+        moveForwardVector.y = 0;
+        moveForwardVector.normalize();
+        moveRightVector.crossVectors(moveForwardVector, camera.up).normalize();
+        const distance = 3.2 * delta;
+        const deltaX = (moveForwardVector.x * forward + moveRightVector.x * strafe) / magnitude * distance;
+        const deltaZ = (moveForwardVector.z * forward + moveRightVector.z * strafe) / magnitude * distance;
+        const nextX = THREE.MathUtils.clamp(camera.position.x + deltaX, -155, 155);
+        const nextZ = THREE.MathUtils.clamp(camera.position.z + deltaZ, -165, 155);
+        if (canMoveTo(nextX, camera.position.z, deltaX, 0)) camera.position.x = nextX;
+        if (canMoveTo(camera.position.x, nextZ, 0, deltaZ)) camera.position.z = nextZ;
+      }
+      verticalVelocity -= gravity * delta;
+      camera.position.y = Math.max(groundLevel, camera.position.y + verticalVelocity * delta);
+      if (camera.position.y === groundLevel) verticalVelocity = 0;
+      for (let i = 0; i < emberCount; i++) {
+        const y = i * 3 + 1;
+        emberPositions[y] += emberSpeeds[i] * delta;
+        if (emberPositions[y] > 23) emberPositions[y] = -0.5;
+      }
+      emberGeometry.attributes.position.needsUpdate = true;
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>
